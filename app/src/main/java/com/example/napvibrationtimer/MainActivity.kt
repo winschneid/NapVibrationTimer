@@ -1,9 +1,11 @@
 package com.example.napvibrationtimer
 
+import android.os.Build
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.os.VibratorManager
 import android.widget.NumberPicker
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
@@ -38,7 +41,15 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun VibrationTimerScreen() {
     val context = LocalContext.current
-    val vibrator = remember { context.getSystemService(ComponentActivity.VIBRATOR_SERVICE) as Vibrator }
+    val vibrator = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(VibratorManager::class.java)
+            vibratorManager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Vibrator::class.java)
+        }
+    }
 
     var hours by remember { mutableIntStateOf(0) }
     var minutes by remember { mutableIntStateOf(10) }
@@ -84,7 +95,7 @@ fun VibrationTimerScreen() {
             override fun onTick(millisUntilFinished: Long) {
                 val hoursLeft = (millisUntilFinished / 1000 / 3600).toInt()
                 val minutesLeft = ((millisUntilFinished / 1000 % 3600) / 60).toInt()
-                statusText = "Timer running: %02d:%02d".format(hoursLeft, minutesLeft)
+                statusText = String.format(Locale.getDefault(), "Timer running: %02d:%02d", hoursLeft, minutesLeft)
             }
 
             override fun onFinish() {
@@ -123,8 +134,8 @@ fun VibrationTimerScreen() {
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 AndroidView(
-                    factory = { context ->
-                        NumberPicker(context).apply {
+                    factory = { ctx ->
+                        NumberPicker(ctx).apply {
                             minValue = 0
                             maxValue = 23
                             value = hours
@@ -135,6 +146,7 @@ fun VibrationTimerScreen() {
                     },
                     update = { picker ->
                         picker.isEnabled = !isTimerRunning && !isVibrating
+                        if (picker.value != hours) picker.value = hours
                     }
                 )
             }
@@ -150,8 +162,8 @@ fun VibrationTimerScreen() {
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 AndroidView(
-                    factory = { context ->
-                        NumberPicker(context).apply {
+                    factory = { ctx ->
+                        NumberPicker(ctx).apply {
                             minValue = 0
                             maxValue = 59
                             value = minutes
@@ -162,6 +174,7 @@ fun VibrationTimerScreen() {
                     },
                     update = { picker ->
                         picker.isEnabled = !isTimerRunning && !isVibrating
+                        if (picker.value != minutes) picker.value = minutes
                     }
                 )
             }
