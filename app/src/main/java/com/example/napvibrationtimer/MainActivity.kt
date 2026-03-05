@@ -1,13 +1,12 @@
 package com.example.napvibrationtimer
 
+import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.os.CountDownTimer
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,13 +16,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Calendar
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         setContent {
             MaterialTheme {
                 Surface(
@@ -41,92 +47,49 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun VibrationTimerScreen() {
     val context = LocalContext.current
-    val vibrator = remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = context.getSystemService(VibratorManager::class.java)
-            vibratorManager.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            context.getSystemService(Vibrator::class.java)
-        }
-    }
+    val serviceState by TimerService.state.collectAsStateWithLifecycle()
+    val isRunning = serviceState == TimerService.State.RUNNING
+    val isVibrating = serviceState == TimerService.State.VIBRATING
 
     val now = remember { Calendar.getInstance() }
-    val timePickerState = rememberTimePickerState(
-        initialHour = now.get(Calendar.HOUR_OF_DAY),
-        initialMinute = now.get(Calendar.MINUTE),
-        is24Hour = true
-    )
+    var selectedHour by remember { mutableIntStateOf(now.get(Calendar.HOUR_OF_DAY)) }
+    var selectedMinute by remember { mutableIntStateOf(now.get(Calendar.MINUTE)) }
     var showTimePicker by remember { mutableStateOf(false) }
-    var isTimerRunning by remember { mutableStateOf(false) }
-    var isVibrating by remember { mutableStateOf(false) }
-    var statusText by remember { mutableStateOf("") }
-    var countDownTimer by remember { mutableStateOf<CountDownTimer?>(null) }
-
-    fun stopVibration() {
-        vibrator.cancel()
-        isVibrating = false
-        isTimerRunning = false
-        statusText = ""
-    }
-
-    fun stopTimer() {
-        countDownTimer?.cancel()
-        countDownTimer = null
-        isTimerRunning = false
-        statusText = ""
-    }
-
-    fun startVibration() {
-        isTimerRunning = false
-        isVibrating = true
-        statusText = "Time's up!"
-
-        val pattern = longArrayOf(0, 1000, 1000)
-        val vibrationEffect = VibrationEffect.createWaveform(pattern, 0)
-        vibrator.vibrate(vibrationEffect)
-    }
 
     fun startTimer() {
         val target = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, timePickerState.hour)
-            set(Calendar.MINUTE, timePickerState.minute)
+            set(Calendar.HOUR_OF_DAY, selectedHour)
+            set(Calendar.MINUTE, selectedMinute)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        val current = Calendar.getInstance()
-        if (!target.after(current)) {
+        if (!target.after(Calendar.getInstance())) {
             target.add(Calendar.DAY_OF_MONTH, 1)
         }
-
-        val totalMillis = target.timeInMillis - current.timeInMillis
-        isTimerRunning = true
-
-        countDownTimer = object : CountDownTimer(totalMillis, 1000) {
-            override fun onTick(millisUntilFinished: Long) {
-                val hoursLeft = (millisUntilFinished / 1000 / 3600).toInt()
-                val minutesLeft = ((millisUntilFinished / 1000 % 3600) / 60).toInt()
-                statusText = String.format(Locale.getDefault(), "Timer running: %02d:%02d", hoursLeft, minutesLeft)
-            }
-
-            override fun onFinish() {
-                startVibration()
-            }
-        }.start()
+        val intent = Intent(context, TimerService::class.java).apply {
+            putExtra(TimerService.EXTRA_TARGET_TIME, target.timeInMillis)
+        }
+        context.startForegroundService(intent)
     }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            countDownTimer?.cancel()
-            vibrator.cancel()
-        }
+    fun stopService() {
+        context.stopService(Intent(context, TimerService::class.java))
     }
 
     if (showTimePicker) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = selectedHour,
+            initialMinute = selectedMinute,
+            is24Hour = true
+        )
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
             confirmButton = {
-                TextButton(onClick = { showTimePicker = false }) {
+                TextButton(onClick = {
+                    selectedHour = timePickerState.hour
+                    selectedMinute = timePickerState.minute
+                    showTimePicker = false
+                }) {
                     Text("OK")
                 }
             },
@@ -152,11 +115,11 @@ fun VibrationTimerScreen() {
 
         OutlinedButton(
             onClick = { showTimePicker = true },
-            enabled = !isTimerRunning && !isVibrating,
+            enabled = !isRunning && !isVibrating,
             modifier = Modifier.padding(bottom = 8.dp)
         ) {
             Text(
-                text = String.format(Locale.getDefault(), "%02d:%02d", timePickerState.hour, timePickerState.minute),
+                text = String.format(Locale.getDefault(), "%02d:%02d", selectedHour, selectedMinute),
                 fontSize = 48.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -164,12 +127,12 @@ fun VibrationTimerScreen() {
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        if (statusText.isNotEmpty()) {
+        if (isVibrating) {
             Text(
-                text = statusText,
+                text = "Time's up!",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isVibrating) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
         }
@@ -178,11 +141,7 @@ fun VibrationTimerScreen() {
 
         Button(
             onClick = {
-                when {
-                    isVibrating -> stopVibration()
-                    isTimerRunning -> stopTimer()
-                    else -> startTimer()
-                }
+                if (isRunning || isVibrating) stopService() else startTimer()
             },
             modifier = Modifier
                 .fillMaxWidth()
@@ -190,7 +149,7 @@ fun VibrationTimerScreen() {
                 .height(56.dp)
         ) {
             Text(
-                text = if (isTimerRunning || isVibrating) "STOP" else "START",
+                text = if (isRunning || isVibrating) "STOP" else "START",
                 fontSize = 18.sp
             )
         }
