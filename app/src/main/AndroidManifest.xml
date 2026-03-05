@@ -11,7 +11,7 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="Nap Vibration Timer"
+        android:label="NapTimer"
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"

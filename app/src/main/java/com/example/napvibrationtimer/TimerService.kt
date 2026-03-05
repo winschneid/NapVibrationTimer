@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.CountDownTimer
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -20,11 +21,16 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class TimerService : Service() {
 
-    enum class State { IDLE, RUNNING, VIBRATING }
+    data class TimerUiState(
+        val status: Status = Status.IDLE,
+        val targetTimeMs: Long = 0L
+    ) {
+        enum class Status { IDLE, RUNNING, VIBRATING }
+    }
 
     companion object {
-        private val _state = MutableStateFlow(State.IDLE)
-        val state: StateFlow<State> = _state.asStateFlow()
+        private val _state = MutableStateFlow(TimerUiState())
+        val state: StateFlow<TimerUiState> = _state.asStateFlow()
 
         const val ACTION_STOP = "com.example.napvibrationtimer.STOP"
         const val EXTRA_TARGET_TIME = "target_time"
@@ -60,7 +66,7 @@ class TimerService : Service() {
             return START_NOT_STICKY
         }
 
-        _state.value = State.RUNNING
+        _state.value = TimerUiState(status = TimerUiState.Status.RUNNING, targetTimeMs = targetTimeMs)
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("Alarm running..."))
 
@@ -82,9 +88,17 @@ class TimerService : Service() {
 
     private fun startVibration() {
         countDownTimer = null
-        _state.value = State.VIBRATING
+        _state.value = _state.value.copy(status = TimerUiState.Status.VIBRATING)
 
-        vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 1000, 1000), 0))
+        val effect = VibrationEffect.createWaveform(longArrayOf(0, 1000, 1000), 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val attributes = VibrationAttributes.Builder()
+                .setUsage(VibrationAttributes.USAGE_ALARM)
+                .build()
+            vibrator.vibrate(effect, attributes)
+        } else {
+            vibrator.vibrate(effect)
+        }
 
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.notify(NOTIFICATION_ID, buildNotification("Time's up! Tap Stop to dismiss."))
@@ -94,7 +108,7 @@ class TimerService : Service() {
         countDownTimer?.cancel()
         vibrator.cancel()
         wakeLock?.let { if (it.isHeld) it.release() }
-        _state.value = State.IDLE
+        _state.value = TimerUiState()
         super.onDestroy()
     }
 
