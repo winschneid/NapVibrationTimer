@@ -66,7 +66,7 @@ fun VibrationTimerScreen() {
         isVibrating = true
         statusText = "Time's up!"
 
-        val pattern = longArrayOf(0, 500, 500)
+        val pattern = longArrayOf(0, 1000, 1000)
         val vibrationEffect = VibrationEffect.createWaveform(pattern, 0)
         vibrator.vibrate(vibrationEffect)
     }
