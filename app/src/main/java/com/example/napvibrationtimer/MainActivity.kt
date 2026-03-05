@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -26,17 +27,15 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         setContent {
             MaterialTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    VibrationTimerScreen()
+                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    VibrationTimerScreen(Modifier.padding(innerPadding))
                 }
             }
         }
@@ -45,7 +44,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VibrationTimerScreen() {
+fun VibrationTimerScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val serviceState by TimerService.state.collectAsStateWithLifecycle()
     val isRunning = serviceState == TimerService.State.RUNNING
@@ -100,7 +99,7 @@ fun VibrationTimerScreen() {
     }
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
