@@ -6,7 +6,6 @@ import android.os.CountDownTimer
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.widget.NumberPicker
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -18,7 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
+import java.util.Calendar
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -38,6 +37,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VibrationTimerScreen() {
     val context = LocalContext.current
@@ -51,8 +51,13 @@ fun VibrationTimerScreen() {
         }
     }
 
-    var hours by remember { mutableIntStateOf(0) }
-    var minutes by remember { mutableIntStateOf(10) }
+    val now = remember { Calendar.getInstance() }
+    val timePickerState = rememberTimePickerState(
+        initialHour = now.get(Calendar.HOUR_OF_DAY),
+        initialMinute = now.get(Calendar.MINUTE),
+        is24Hour = true
+    )
+    var showTimePicker by remember { mutableStateOf(false) }
     var isTimerRunning by remember { mutableStateOf(false) }
     var isVibrating by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("") }
@@ -83,12 +88,18 @@ fun VibrationTimerScreen() {
     }
 
     fun startTimer() {
-        val totalMillis = (hours * 3600 + minutes * 60) * 1000L
-
-        if (totalMillis == 0L) {
-            return
+        val target = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, timePickerState.hour)
+            set(Calendar.MINUTE, timePickerState.minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val current = Calendar.getInstance()
+        if (!target.after(current)) {
+            target.add(Calendar.DAY_OF_MONTH, 1)
         }
 
+        val totalMillis = target.timeInMillis - current.timeInMillis
         isTimerRunning = true
 
         countDownTimer = object : CountDownTimer(totalMillis, 1000) {
@@ -111,6 +122,20 @@ fun VibrationTimerScreen() {
         }
     }
 
+    if (showTimePicker) {
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            confirmButton = {
+                TextButton(onClick = { showTimePicker = false }) {
+                    Text("OK")
+                }
+            },
+            text = {
+                TimePicker(state = timePickerState)
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -118,66 +143,23 @@ fun VibrationTimerScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            ) {
-                Text(
-                    text = "Hours",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                AndroidView(
-                    factory = { ctx ->
-                        NumberPicker(ctx).apply {
-                            minValue = 0
-                            maxValue = 23
-                            value = hours
-                            setOnValueChangedListener { _, _, newVal ->
-                                hours = newVal
-                            }
-                        }
-                    },
-                    update = { picker ->
-                        picker.isEnabled = !isTimerRunning && !isVibrating
-                        if (picker.value != hours) picker.value = hours
-                    }
-                )
-            }
+        Text(
+            text = "Wake-up Time",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
 
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            ) {
-                Text(
-                    text = "Minutes",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                AndroidView(
-                    factory = { ctx ->
-                        NumberPicker(ctx).apply {
-                            minValue = 0
-                            maxValue = 59
-                            value = minutes
-                            setOnValueChangedListener { _, _, newVal ->
-                                minutes = newVal
-                            }
-                        }
-                    },
-                    update = { picker ->
-                        picker.isEnabled = !isTimerRunning && !isVibrating
-                        if (picker.value != minutes) picker.value = minutes
-                    }
-                )
-            }
+        OutlinedButton(
+            onClick = { showTimePicker = true },
+            enabled = !isTimerRunning && !isVibrating,
+            modifier = Modifier.padding(bottom = 8.dp)
+        ) {
+            Text(
+                text = String.format(Locale.getDefault(), "%02d:%02d", timePickerState.hour, timePickerState.minute),
+                fontSize = 48.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
 
         Spacer(modifier = Modifier.height(32.dp))
